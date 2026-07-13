@@ -20,6 +20,8 @@ sent-trader scan NVDA AAPL   # scrape news + prices, score sentiment (VADER)
 sent-trader train            # train the TF classifier on Financial PhraseBank
 sent-trader benchmark        # TF classifier vs VADER on the held-out test set
 sent-trader scan NVDA --model tf   # score with the trained classifier
+sent-trader backfill         # FNSPID historical news + full price history (top-50 universe)
+sent-trader score --model tf # score any unscored backlog
 sent-trader list             # tickers in the database
 sent-trader export           # dump prices and articles to CSV
 ```
@@ -28,15 +30,24 @@ The database is a single SQLite file (`sentiment.db` by default; override with t
 
 For exploration and the price-vs-sentiment plot, open [notebooks/sent_scanner.ipynb](notebooks/sent_scanner.ipynb).
 
+## Historical data
+
+Live scraping only sees today's headlines; models need years. `sent-trader backfill` streams the [FNSPID dataset](https://huggingface.co/datasets/Zihan1004/FNSPID) (Dong et al. 2024 — ~15M timestamped, ticker-tagged financial news records, 1999–2023) directly over HTTP, keeps only rows for the 50-ticker universe ([universe.py](src/sent_trader/ingestion/universe.py)), and stores them alongside full daily price history from yfinance. Nothing multi-gigabyte lands on disk, re-running deduplicates, and the freshly stored backlog is scored by whichever model you choose.
+
+[features.py](src/sent_trader/features.py) turns scored articles into model-ready daily features (mean score, article count, dispersion) with the anti-leakage rule applied: a headline published after the 16:00 US/Eastern close counts toward the *next* trading day.
+
 ## Layout
 
 ```
 src/sent_trader/
 ├── config.py        # all tunables in one place
-├── db.py            # SQLite schema + queries
+├── db.py            # SQLite schema + queries (+ versioned migrations)
+├── features.py      # daily sentiment features, leakage-safe date shift
 ├── ingestion/
 │   ├── news.py      # Google News RSS scraper (raw titles)
-│   └── prices.py    # daily OHLCV via yfinance
+│   ├── prices.py    # daily OHLCV via yfinance
+│   ├── fnspid.py    # FNSPID historical news, streamed + filtered
+│   └── universe.py  # the 50-ticker training universe
 ├── sentiment/
 │   ├── vader.py         # VADER scorer — reference scorer interface
 │   ├── phrasebank.py    # Financial PhraseBank download + stratified splits
@@ -50,7 +61,7 @@ tests/               # pytest suite (run: pytest)
 ## Schema
 
 - `stock_list(stock_id, symbol)`
-- `articles(article_id, link UNIQUE, title RAW, publish_date, stock_id)`
+- `articles(article_id, link, title RAW, publish_date, stock_id)` — UNIQUE per (link, stock): one roundup article can cover several tickers
 - `sentiment_scores(article_id, model_name, model_version, score, label, scored_at)` — UNIQUE per (article, model, version)
 - `daily_stock_price(stock_id, date, open, high, low, close, volume)` — UNIQUE per (date, stock)
 
@@ -75,6 +86,6 @@ Macro F1 is the headline metric: the dataset is ~59% neutral, so accuracy alone 
 
 1. ✅ **Professional structure** — packaged layout, versioned scores, raw storage, tests, CLI
 2. ✅ **TensorFlow sentiment classifier** trained on Financial PhraseBank — beats VADER on the held-out set (macro F1 0.686 vs 0.490)
-3. **Historical data at scale** — FNSPID ingestion for the 50 largest S&P 500 names
+3. ✅ **Historical data at scale** — FNSPID ingestion for the 50 largest S&P 500 names, streamed and batch-scored
 4. **Probabilistic return forecaster** — quantile model over last-month prices + sentiment, validated with a coverage/calibration test against an empirical-quantile baseline
 5. **Streamlit app** — ticker picker, probability curve, headlines, calibration tab

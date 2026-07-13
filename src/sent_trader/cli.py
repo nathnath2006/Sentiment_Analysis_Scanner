@@ -27,6 +27,18 @@ def main() -> None:
     export_p = sub.add_parser("export", help="Export the database to CSV files")
     export_p.add_argument("--outdir", default=".", help="Directory for the CSV files")
 
+    backfill_p = sub.add_parser(
+        "backfill",
+        help="Load FNSPID historical news + full price history for the top-50 universe",
+    )
+    backfill_p.add_argument("--tickers", nargs="*", help="Override the default 50-ticker universe")
+    backfill_p.add_argument("--model", default="tf", choices=["vader", "tf", "none"], help="Model to score the backlog with")
+    backfill_p.add_argument("--max-rows", type=int, help="Read only the first N CSV rows (smoke test)")
+    backfill_p.add_argument("--skip-prices", action="store_true", help="Skip the yfinance price backfill")
+
+    score_p = sub.add_parser("score", help="Score all unscored articles with a model")
+    score_p.add_argument("--model", default="tf", choices=["vader", "tf"])
+
     train_p = sub.add_parser("train", help="Train the TensorFlow classifier on Financial PhraseBank")
     train_p.add_argument("--epochs", type=int, default=50, help="Maximum epochs (early stopping applies)")
 
@@ -57,6 +69,21 @@ def main() -> None:
         stock_df.to_csv(stock_path, index=False)
         articles_df.to_csv(articles_path, index=False)
         print(f"Wrote {stock_path} ({len(stock_df)} rows) and {articles_path} ({len(articles_df)} rows)")
+    elif args.command == "backfill":
+        result = pipeline.backfill(
+            tickers=args.tickers or None,
+            model=None if args.model == "none" else args.model,
+            max_rows=args.max_rows,
+            skip_prices=args.skip_prices,
+        )
+        print(
+            f"Done: read {result['rows_read']:,} rows, matched {result['rows_matched']:,}, "
+            f"stored {result['articles_added']:,} articles, "
+            f"{result['price_rows_added']:,} price rows, scored {result['articles_scored']:,}"
+        )
+    elif args.command == "score":
+        scored = pipeline.score_pending(model=args.model, log=print)
+        print(f"Scored {scored:,} articles")
     elif args.command == "train":
         from .sentiment import tf_classifier
 

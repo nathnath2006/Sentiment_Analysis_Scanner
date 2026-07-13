@@ -22,6 +22,9 @@ def get_connection(db_path: str | None = None) -> sqlite3.Connection:
     return conn
 
 
+SCHEMA_VERSION = 2
+
+
 def init_db(db_path: str | None = None) -> None:
     conn = get_connection(db_path)
     conn.executescript("""
@@ -32,10 +35,11 @@ def init_db(db_path: str | None = None) -> None:
 
         CREATE TABLE IF NOT EXISTS articles (
             article_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            link TEXT NOT NULL UNIQUE,
+            link TEXT NOT NULL,
             title TEXT NOT NULL,
             publish_date TEXT NOT NULL,
             stock_id INTEGER NOT NULL,
+            UNIQUE (link, stock_id),
             FOREIGN KEY (stock_id) REFERENCES stock_list(stock_id)
         );
 
@@ -64,8 +68,49 @@ def init_db(db_path: str | None = None) -> None:
             FOREIGN KEY (stock_id) REFERENCES stock_list(stock_id)
         );
     """)
+    _migrate(conn)
     conn.commit()
     conn.close()
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    """Upgrade databases created before the current schema version.
+
+    v1 -> v2: articles.link was globally UNIQUE, but one article (e.g. a
+    'biggest movers' roundup) can legitimately cover several tickers, so
+    uniqueness is now per (link, stock_id).
+    """
+    version = conn.execute("PRAGMA user_version;").fetchone()[0]
+    if version < 2:
+        # v1 marker: a UNIQUE index on the single column `link` (the v2
+        # index is composite on link+stock_id, so it doesn't match this).
+        link_unique = conn.execute(
+            "SELECT COUNT(*) FROM pragma_index_list('articles') il"
+            " WHERE il.\"unique\" = 1"
+            " AND (SELECT COUNT(*) FROM pragma_index_info(il.name)) = 1"
+            " AND (SELECT name FROM pragma_index_info(il.name)) = 'link';"
+        ).fetchone()[0]
+        if link_unique:
+            # sentiment_scores rows reference articles; FK enforcement must
+            # be off while the table is rebuilt (article_ids are preserved).
+            conn.execute("PRAGMA foreign_keys = OFF;")
+            conn.executescript("""
+                DROP TABLE IF EXISTS articles_v2;
+                CREATE TABLE articles_v2 (
+                    article_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    link TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    publish_date TEXT NOT NULL,
+                    stock_id INTEGER NOT NULL,
+                    UNIQUE (link, stock_id),
+                    FOREIGN KEY (stock_id) REFERENCES stock_list(stock_id)
+                );
+                INSERT INTO articles_v2 SELECT * FROM articles;
+                DROP TABLE articles;
+                ALTER TABLE articles_v2 RENAME TO articles;
+            """)
+            conn.execute("PRAGMA foreign_keys = ON;")
+        conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION};")
 
 
 def add_stock(symbol: str, db_path: str | None = None) -> int:
@@ -83,18 +128,19 @@ def add_stock(symbol: str, db_path: str | None = None) -> int:
 def add_articles(stock_id: int, articles: list[dict], db_path: str | None = None) -> int:
     """Store raw articles, skipping links already present. Returns rows added."""
     conn = get_connection(db_path)
-    cur = conn.cursor()
-    added = 0
-    for art in articles:
-        cur.execute(
-            """
-            INSERT INTO articles (link, title, publish_date, stock_id)
-            VALUES (?, ?, ?, ?)
-            ON CONFLICT (link) DO NOTHING;
-            """,
-            (art["link"], art["title"], art["publish_date"].isoformat(), stock_id),
-        )
-        added += cur.rowcount
+    before = conn.total_changes
+    conn.executemany(
+        """
+        INSERT INTO articles (link, title, publish_date, stock_id)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT (link, stock_id) DO NOTHING;
+        """,
+        [
+            (art["link"], art["title"], art["publish_date"].isoformat(), stock_id)
+            for art in articles
+        ],
+    )
+    added = conn.total_changes - before
     conn.commit()
     conn.close()
     return added
@@ -128,22 +174,25 @@ def add_daily_prices(stock_id: int, price_data: pd.DataFrame, db_path: str | Non
     return added
 
 
-def get_unscored_articles(model_name: str, model_version: str, db_path: str | None = None) -> pd.DataFrame:
+def get_unscored_articles(
+    model_name: str, model_version: str, db_path: str | None = None, limit: int | None = None
+) -> pd.DataFrame:
     """Articles that the given model version has not scored yet."""
     conn = get_connection(db_path)
-    df = pd.read_sql(
-        """
+    query = """
         SELECT a.article_id, a.title
         FROM articles a
         LEFT JOIN sentiment_scores s
             ON s.article_id = a.article_id
             AND s.model_name = ?
             AND s.model_version = ?
-        WHERE s.score_id IS NULL;
-        """,
-        conn,
-        params=(model_name, model_version),
-    )
+        WHERE s.score_id IS NULL
+    """
+    params: tuple = (model_name, model_version)
+    if limit is not None:
+        query += " LIMIT ?"
+        params += (limit,)
+    df = pd.read_sql(query, conn, params=params)
     conn.close()
     return df
 
@@ -151,19 +200,20 @@ def get_unscored_articles(model_name: str, model_version: str, db_path: str | No
 def add_sentiment_scores(scores: list[dict], db_path: str | None = None) -> int:
     """Store scores: dicts with article_id, model_name, model_version, score, label."""
     conn = get_connection(db_path)
-    cur = conn.cursor()
     now = datetime.now().isoformat(timespec="seconds")
-    added = 0
-    for s in scores:
-        cur.execute(
-            """
-            INSERT INTO sentiment_scores (article_id, model_name, model_version, score, label, scored_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-            ON CONFLICT (article_id, model_name, model_version) DO NOTHING;
-            """,
-            (s["article_id"], s["model_name"], s["model_version"], s["score"], s["label"], now),
-        )
-        added += cur.rowcount
+    before = conn.total_changes
+    conn.executemany(
+        """
+        INSERT INTO sentiment_scores (article_id, model_name, model_version, score, label, scored_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT (article_id, model_name, model_version) DO NOTHING;
+        """,
+        [
+            (s["article_id"], s["model_name"], s["model_version"], s["score"], s["label"], now)
+            for s in scores
+        ],
+    )
+    added = conn.total_changes - before
     conn.commit()
     conn.close()
     return added
