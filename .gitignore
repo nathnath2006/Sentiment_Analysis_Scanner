@@ -10,3 +10,5 @@ __pycache__/
 *.db
 *.csv
 .env
+data/
+models/

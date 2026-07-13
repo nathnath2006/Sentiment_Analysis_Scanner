@@ -19,6 +19,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+ml = [
+    "tensorflow>=2.20",
+    "scikit-learn",
+]
 dev = [
     "pytest",
     "matplotlib",

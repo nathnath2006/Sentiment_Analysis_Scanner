@@ -7,10 +7,10 @@ new model version automatically back-fills history.
 from . import db
 from .ingestion.news import scrape_news
 from .ingestion.prices import fetch_daily_prices
-from .sentiment import vader
+from .sentiment import get_scorer
 
 
-def scan(ticker: str, db_path: str | None = None) -> dict:
+def scan(ticker: str, db_path: str | None = None, model: str = "vader") -> dict:
     """Collect news and prices for a ticker, then score pending articles.
 
     Returns counts of what was added.
@@ -24,7 +24,7 @@ def scan(ticker: str, db_path: str | None = None) -> dict:
     prices = fetch_daily_prices(ticker)
     new_prices = db.add_daily_prices(stock_id, prices, db_path)
 
-    new_scores = score_pending(db_path)
+    new_scores = score_pending(db_path, model)
 
     return {
         "ticker": ticker,
@@ -34,17 +34,18 @@ def scan(ticker: str, db_path: str | None = None) -> dict:
     }
 
 
-def score_pending(db_path: str | None = None) -> int:
-    """Score every article the current model version has not seen yet."""
-    pending = db.get_unscored_articles(vader.MODEL_NAME, vader.MODEL_VERSION, db_path)
+def score_pending(db_path: str | None = None, model: str = "vader") -> int:
+    """Score every article the chosen model version has not seen yet."""
+    scorer = get_scorer(model)
+    pending = db.get_unscored_articles(scorer.MODEL_NAME, scorer.MODEL_VERSION, db_path)
     if pending.empty:
         return 0
-    results = vader.score_titles(pending["title"].tolist())
+    results = scorer.score_titles(pending["title"].tolist())
     rows = [
         {
             "article_id": int(article_id),
-            "model_name": vader.MODEL_NAME,
-            "model_version": vader.MODEL_VERSION,
+            "model_name": scorer.MODEL_NAME,
+            "model_version": scorer.MODEL_VERSION,
             "score": r["score"],
             "label": r["label"],
         }
