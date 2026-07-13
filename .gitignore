@@ -4,6 +4,7 @@ __pycache__/
 *.egg-info/
 .pytest_cache/
 .ipynb_checkpoints/
+.claude/
 
 # local data — the database and exports are artifacts, not source
 *.db
