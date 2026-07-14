@@ -17,15 +17,48 @@ bad-date,Broken row,NVDA,https://example.com/broken,Pub,,,,,,
 
 
 class FakeResponse:
-    def __init__(self, data: bytes):
+    def __init__(self, data: bytes, total: int | None = None):
         self.raw = io.BytesIO(data)
-        self.headers = {"content-length": str(len(data))}
+        self.headers = {"content-length": str(total if total is not None else len(data))}
 
     def raise_for_status(self):
         pass
 
     def close(self):
         pass
+
+
+class FlakyRaw(io.BytesIO):
+    """Serves its bytes, then raises like a dropped connection."""
+
+    def read(self, n=-1):
+        chunk = super().read(n)
+        if not chunk:
+            raise ConnectionResetError(54, "Connection reset by peer")
+        return chunk
+
+
+def test_stream_resumes_with_range_after_disconnect(monkeypatch):
+    data = CSV_FIXTURE.encode()
+    cut = len(data) // 2
+    calls = []
+
+    def fake_get(url, stream=True, timeout=0, headers=None):
+        calls.append(headers or {})
+        if len(calls) == 1:
+            resp = FakeResponse(data[:cut], total=len(data))
+            resp.raw = FlakyRaw(data[:cut])
+            return resp
+        offset = int(headers["Range"].removeprefix("bytes=").rstrip("-"))
+        return FakeResponse(data[offset:], total=len(data))
+
+    monkeypatch.setattr(fnspid.requests, "get", fake_get)
+    monkeypatch.setattr(fnspid.time, "sleep", lambda _: None)
+
+    stream = fnspid.ResilientHTTPStream("http://example.com/x.csv")
+    assert io.BufferedReader(stream).read() == data
+    assert len(calls) == 2
+    assert calls[1]["Range"] == f"bytes={cut}-"
 
 
 def test_parse_date_utc():
