@@ -22,6 +22,9 @@ sent-trader benchmark        # TF classifier vs VADER on the held-out test set
 sent-trader scan NVDA --model tf   # score with the trained classifier
 sent-trader backfill         # FNSPID historical news + full price history (top-50 universe)
 sent-trader score --model tf # score any unscored backlog
+sent-trader forecast-train      # train the quantile forecaster
+sent-trader forecast-benchmark  # coverage test vs empirical-quantile baselines
+sent-trader forecast NVDA       # tomorrow's return distribution for a ticker
 sent-trader list             # tickers in the database
 sent-trader export           # dump prices and articles to CSV
 ```
@@ -82,10 +85,26 @@ Benchmark on the held-out PhraseBank test set (727 sentences, stratified, seed 4
 
 Macro F1 is the headline metric: the dataset is ~59% neutral, so accuracy alone rewards predicting "neutral" everywhere. The biggest win is on negative headlines — the class that matters most for price reaction.
 
+## Probabilistic forecaster
+
+`sent-trader forecast NVDA` answers: *given the last month of prices and news sentiment, what does tomorrow's return distribution look like?*
+
+The model ([forecast/model.py](src/sent_trader/forecast/model.py)) is a small quantile-regression MLP (7 quantiles, pinball loss, a non-crossing output layer) over 25 features per day: 20 vol-scaled return lags, trailing volatility, and 4 sentiment features from the TF classifier's scores. It predicts quantiles of the **vol-standardized** return and rescales by trailing volatility — one pooled network then serves calm and turbulent regimes alike. Trained on ~134k samples pooled across the 50-ticker universe (2009–2019), tuned on 2020–2021, tested on 2022–2023. Splits are chronological; a leakage test pins the target to strictly-next-day returns.
+
+The bar it must clear ([forecast/baseline.py](src/sent_trader/forecast/baseline.py)): trailing empirical quantiles — "tomorrow will be distributed like the recent past." On the held-out 2022–2023 test set (25,050 ticker-days):
+
+| model | pinball ↓ | 90% coverage (→0.90) | 50% coverage (→0.50) | 90% width |
+|---|---|---|---|---|
+| baseline 20d | 0.00446 | 0.818 | 0.458 | 0.0517 |
+| baseline 250d | 0.00434 | **0.890** | 0.507 | 0.0601 |
+| **tf-quantile** | **0.00432** | 0.859 | 0.469 | 0.0537 |
+
+Honest read: the model wins on pinball loss (the proper scoring rule) with narrower intervals than the 250-day baseline, but its 90% band slightly undercovers (0.86 vs the target 0.90) — the baseline is better calibrated at the far tails. Daily equity returns are mostly noise; beating a well-chosen empirical baseline at all is the hard part, and the margin is accordingly thin.
+
 ## Roadmap
 
 1. ✅ **Professional structure** — packaged layout, versioned scores, raw storage, tests, CLI
 2. ✅ **TensorFlow sentiment classifier** trained on Financial PhraseBank — beats VADER on the held-out set (macro F1 0.686 vs 0.490)
 3. ✅ **Historical data at scale** — FNSPID ingestion for the 50 largest S&P 500 names, streamed and batch-scored
-4. **Probabilistic return forecaster** — quantile model over last-month prices + sentiment, validated with a coverage/calibration test against an empirical-quantile baseline
+4. ✅ **Probabilistic return forecaster** — quantile model over last-month prices + sentiment, beats the empirical-quantile baseline on pinball loss (0.00432 vs 0.00434 on 2022–2023)
 5. **Streamlit app** — ticker picker, probability curve, headlines, calibration tab

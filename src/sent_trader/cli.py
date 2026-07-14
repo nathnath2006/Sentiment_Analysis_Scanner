@@ -44,6 +44,14 @@ def main() -> None:
 
     sub.add_parser("benchmark", help="Evaluate the TF classifier against VADER on the held-out test set")
 
+    ftrain_p = sub.add_parser("forecast-train", help="Train the quantile forecaster on the pooled dataset")
+    ftrain_p.add_argument("--epochs", type=int, default=100)
+
+    sub.add_parser("forecast-benchmark", help="Coverage test: forecaster vs empirical-quantile baselines")
+
+    forecast_p = sub.add_parser("forecast", help="Predict tomorrow's return distribution for a ticker")
+    forecast_p.add_argument("ticker", help="Ticker symbol, e.g. NVDA")
+
     args = parser.parse_args()
 
     if args.command == "scan":
@@ -95,6 +103,33 @@ def main() -> None:
         from .sentiment import benchmark
 
         benchmark.run()
+    elif args.command == "forecast-train":
+        from .forecast import dataset as fdataset, model as fmodel
+
+        data = fdataset.build_dataset()
+        result = fmodel.train(fdataset.split(data), epochs=args.epochs)
+        print(f"Saved {result['model_path']}")
+        print(f"Trained on {result['train_samples']:,} samples; val pinball {result['val_pinball']}")
+        print("Now run the coverage test: sent-trader forecast-benchmark")
+    elif args.command == "forecast-benchmark":
+        from .forecast import evaluate
+
+        evaluate.run()
+    elif args.command == "forecast":
+        import math
+
+        from . import db as _db
+        from .forecast import TAUS, dataset as fdataset, model as fmodel
+
+        ticker = args.ticker.upper()
+        row = fdataset.latest_features(ticker)
+        quantiles = fmodel.predict(row).iloc[0]
+        close = _db.get_stock_prices(ticker).iloc[-1]["close"]
+        print(f"{ticker}: next-trading-day return distribution (from {row['date'].iloc[0]}, close {close:.2f})")
+        for tau in TAUS:
+            log_ret = quantiles[tau]
+            pct = (math.exp(log_ret) - 1) * 100
+            print(f"  q{int(tau * 100):02d}: {pct:+.2f}%  ({close * math.exp(log_ret):.2f})")
 
 
 if __name__ == "__main__":
