@@ -14,7 +14,7 @@ Two design rules the whole project follows:
 ## Quickstart
 
 ```bash
-pip install -e ".[dev,ml]"   # ml extra = TensorFlow + scikit-learn
+pip install -e ".[dev,ml,app]"   # ml = TensorFlow + scikit-learn, app = Streamlit
 
 sent-trader scan NVDA AAPL   # scrape news + prices, score sentiment (VADER)
 sent-trader train            # train the TF classifier on Financial PhraseBank
@@ -27,6 +27,7 @@ sent-trader forecast-benchmark  # coverage test vs empirical-quantile baselines
 sent-trader forecast NVDA       # tomorrow's return distribution for a ticker
 sent-trader list             # tickers in the database
 sent-trader export           # dump prices and articles to CSV
+sent-trader app              # launch the Streamlit dashboard
 ```
 
 The database is a single SQLite file (`sentiment.db` by default; override with the `SENT_TRADER_DB` environment variable). No server setup needed.
@@ -101,10 +102,21 @@ The bar it must clear ([forecast/baseline.py](src/sent_trader/forecast/baseline.
 
 Honest read: the model wins on pinball loss (the proper scoring rule) with narrower intervals than the 250-day baseline, but its 90% band slightly undercovers (0.86 vs the target 0.90) — the baseline is better calibrated at the far tails. Daily equity returns are mostly noise; beating a well-chosen empirical baseline at all is the hard part, and the margin is accordingly thin.
 
+## Dashboard
+
+`sent-trader app` serves a Streamlit dashboard ([app.py](src/sent_trader/app.py)) with four tabs:
+
+- **Forecast** — last 90 days of price with tomorrow's 90%/50%/median bands drawn at the end, plus the full quantile table
+- **Headlines** — recent articles with the classifier's score and label
+- **Sentiment history** — price and daily mean sentiment on aligned panels
+- **Calibration** — the honesty check, live: metrics table and a reliability curve (predicted quantile vs observed frequency) for the model and the baseline on the held-out years
+
+A sidebar button fetches fresh news and prices for the selected ticker and re-scores on the spot.
+
 ## Roadmap
 
 1. ✅ **Professional structure** — packaged layout, versioned scores, raw storage, tests, CLI
 2. ✅ **TensorFlow sentiment classifier** trained on Financial PhraseBank — beats VADER on the held-out set (macro F1 0.686 vs 0.490)
 3. ✅ **Historical data at scale** — FNSPID ingestion for the 50 largest S&P 500 names, streamed and batch-scored
 4. ✅ **Probabilistic return forecaster** — quantile model over last-month prices + sentiment, beats the empirical-quantile baseline on pinball loss (0.00432 vs 0.00434 on 2022–2023)
-5. **Streamlit app** — ticker picker, probability curve, headlines, calibration tab
+5. ✅ **Streamlit app** — forecast fan, headlines, sentiment history, calibration tab

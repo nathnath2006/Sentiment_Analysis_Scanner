@@ -23,6 +23,10 @@ ml = [
     "tensorflow>=2.20",
     "scikit-learn",
 ]
+app = [
+    "streamlit",
+    "matplotlib",
+]
 dev = [
     "pytest",
     "matplotlib",

@@ -52,6 +52,8 @@ def main() -> None:
     forecast_p = sub.add_parser("forecast", help="Predict tomorrow's return distribution for a ticker")
     forecast_p.add_argument("ticker", help="Ticker symbol, e.g. NVDA")
 
+    sub.add_parser("app", help="Launch the Streamlit dashboard")
+
     args = parser.parse_args()
 
     if args.command == "scan":
@@ -130,6 +132,15 @@ def main() -> None:
             log_ret = quantiles[tau]
             pct = (math.exp(log_ret) - 1) * 100
             print(f"  q{int(tau * 100):02d}: {pct:+.2f}%  ({close * math.exp(log_ret):.2f})")
+    elif args.command == "app":
+        import subprocess
+        import sys
+        from pathlib import Path as _Path
+
+        app_path = _Path(__file__).parent / "app.py"
+        raise SystemExit(
+            subprocess.run([sys.executable, "-m", "streamlit", "run", str(app_path)]).returncode
+        )
 
 
 if __name__ == "__main__":
