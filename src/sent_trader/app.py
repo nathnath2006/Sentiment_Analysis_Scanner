@@ -167,7 +167,7 @@ with tab_forecast:
         f"{ticker} — last 90 days, with tomorrow's forecast bands (90% / 50% / median)",
         fontsize=10, color=TEXT, loc="left",
     )
-    st.pyplot(fig, use_container_width=True)
+    st.pyplot(fig, width=True)
 
     table = pd.DataFrame(
         {
@@ -176,7 +176,7 @@ with tab_forecast:
             "price": [f"{price_q[t]:,.2f}" for t in TAUS],
         }
     )
-    st.dataframe(table, hide_index=True, use_container_width=False)
+    st.dataframe(table, hide_index=True, width=False)
 
 # ---------------------------------------------------------------- headlines
 with tab_news:
@@ -194,7 +194,7 @@ with tab_news:
         view["published"] = view["publish_date"].dt.strftime("%Y-%m-%d %H:%M")
         st.dataframe(
             view[["published", "sentiment", "title"]],
-            hide_index=True, use_container_width=True, height=560,
+            hide_index=True, width=True, height=560,
         )
 
 # ---------------------------------------------------------------- history
@@ -222,7 +222,7 @@ with tab_history:
             "daily mean sentiment (tf-phrasebank)", fontsize=10, color=TEXT, loc="left"
         )
         ax2.xaxis.set_major_formatter(mdates.DateFormatter("%b %Y"))
-        st.pyplot(fig, use_container_width=True)
+        st.pyplot(fig, width=True)
 
 # ------------------------------------------------------------- calibration
 with tab_calibration:
@@ -233,7 +233,7 @@ with tab_calibration:
     )
     table, reliability, t0, t1 = calibration_data()
     st.caption(f"Held-out test period: {t0} to {t1}")
-    st.dataframe(table, hide_index=True, use_container_width=False)
+    st.dataframe(table, hide_index=True, width=False)
 
     fig, ax = new_figure(4.0)
     ax.plot([0, 1], [0, 1], color=GRID, linewidth=1.5, linestyle="--")
@@ -252,4 +252,4 @@ with tab_calibration:
         fontsize=10, color=TEXT, loc="left",
     )
     ax.legend(frameon=False, fontsize=9, labelcolor=TEXT_2)
-    st.pyplot(fig, use_container_width=True)
+    st.pyplot(fig, width=True)

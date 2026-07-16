@@ -138,8 +138,20 @@ def predict(data: pd.DataFrame) -> pd.DataFrame:
     """Quantile forecasts for each dataset row; columns are TAUS.
 
     Rescales the net's standardized quantiles by each row's trailing vol.
+
+    Calls the model directly instead of model.predict(): predict() spins up
+    a threaded tf.data pipeline that can deadlock outside a plain main
+    thread (observed hanging forever under Streamlit's script thread).
+    Direct __call__ is synchronous and safe everywhere.
     """
+    import tensorflow as tf
+
+    model = _get_model()
     x = data[FEATURE_COLS].to_numpy(dtype=np.float32)
     vol = data["vol20"].to_numpy(dtype=np.float32) + VOL_EPS
-    preds = _get_model().predict(x, verbose=0) * vol[:, None]
+    chunks = [
+        model(tf.constant(x[i : i + 8192]), training=False).numpy()
+        for i in range(0, len(x), 8192)
+    ]
+    preds = np.concatenate(chunks) * vol[:, None]
     return pd.DataFrame(preds, columns=TAUS, index=data.index)

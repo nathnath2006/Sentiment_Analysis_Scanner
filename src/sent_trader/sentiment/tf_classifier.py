@@ -140,7 +140,15 @@ def score_titles(titles: list[str]) -> list[dict]:
         return []
     import tensorflow as tf
 
+    # Direct __call__ rather than model.predict(): predict()'s threaded
+    # tf.data pipeline can deadlock off the main thread (e.g. Streamlit).
     # tf.constant, not np.array: numpy converts str lists to unicode dtype
     # ('<U...'), which Keras rejects as a string-model input.
-    probs = _get_model().predict(tf.constant(titles), verbose=0)
+    model = _get_model()
+    probs = np.concatenate(
+        [
+            model(tf.constant(titles[i : i + 2048]), training=False).numpy()
+            for i in range(0, len(titles), 2048)
+        ]
+    )
     return probs_to_results(probs)
