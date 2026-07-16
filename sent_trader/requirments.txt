@@ -1,7 +1,0 @@
-feedparser
-beautifulsoup4
-nltk
-yfinance
-pandas
-psycopg2
-
