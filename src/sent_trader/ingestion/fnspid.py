@@ -1,3 +1,4 @@
+
 """FNSPID historical news ingestion.
 
 FNSPID (Dong et al. 2024) provides ~15M timestamped, ticker-tagged financial
