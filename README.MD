@@ -100,7 +100,7 @@ The bar it must clear ([forecast/baseline.py](src/sent_trader/forecast/baseline.
 | baseline 250d | 0.00434 | **0.890** | 0.507 | 0.0601 |
 | **tf-quantile** | **0.00432** | 0.859 | 0.469 | 0.0537 |
 
-Honest read: the model wins on pinball loss (the proper scoring rule) with narrower intervals than the 250-day baseline, but its 90% band slightly undercovers (0.86 vs the target 0.90) — the baseline is better calibrated at the far tails. Daily equity returns are mostly noise; beating a well-chosen empirical baseline at all is the hard part, and the margin is accordingly thin.
+The model wins on pinball loss (the proper scoring rule) with narrower intervals than the 250-day baseline, but its 90% band slightly undercovers (0.86 vs the target 0.90) — the baseline is better calibrated at the far tails. Daily equity returns are mostly noise; beating a well-chosen empirical baseline at all is the hard part, and the margin is accordingly thin.
 
 ## Dashboard
 
@@ -112,7 +112,3 @@ Honest read: the model wins on pinball loss (the proper scoring rule) with narro
 - **Calibration** — the honesty check, live: metrics table and a reliability curve (predicted quantile vs observed frequency) for the model and the baseline on the held-out years
 
 A sidebar button fetches fresh news and prices for the selected ticker and re-scores on the spot.
-
-## Roadmap
-
-
