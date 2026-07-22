@@ -42,7 +42,7 @@ def build_ticker_frame(
     prices = prices.drop_duplicates("date").sort_values("date").reset_index(drop=True)
 
     frame = pd.DataFrame({"date": prices["date"]})
-    frame["log_ret"] = np.log(prices["close"]).diff()
+    frame["log_ret"] = prices['close'].apply(np.log).diff()
     frame["vol20"] = frame["log_ret"].rolling(LOOKBACK).std()
 
     # return lags, scaled by trailing vol so tickers pool on one scale;

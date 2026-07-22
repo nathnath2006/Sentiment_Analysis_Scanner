@@ -115,8 +115,4 @@ A sidebar button fetches fresh news and prices for the selected ticker and re-sc
 
 ## Roadmap
 
-1. ✅ **Professional structure** — packaged layout, versioned scores, raw storage, tests, CLI
-2. ✅ **TensorFlow sentiment classifier** trained on Financial PhraseBank — beats VADER on the held-out set (macro F1 0.686 vs 0.490)
-3. ✅ **Historical data at scale** — FNSPID ingestion for the 50 largest S&P 500 names, streamed and batch-scored
-4. ✅ **Probabilistic return forecaster** — quantile model over last-month prices + sentiment, beats the empirical-quantile baseline on pinball loss (0.00432 vs 0.00434 on 2022–2023)
-5. ✅ **Streamlit app** — forecast fan, headlines, sentiment history, calibration tab
+
